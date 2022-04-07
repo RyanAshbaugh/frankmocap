@@ -6,6 +6,7 @@ from bodymocap.models import SMPL
 from renderer.visualizer import Visualizer
 import mocap_utils.demo_utils as demo_utils
 from mocap_utils.coordconv import convert_bbox_to_oriIm, convert_smpl_to_bbox
+from renderer import meshRenderer
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
@@ -76,3 +77,71 @@ res_img = visualizer.visualize(
 out_dir = "/home/ryan/iprobe/frankmocap/temp_smpl_images/"
 
 cv2.imwrite( os.path.join( out_dir, 'test_image.jpg' ), res_img )
+
+
+#renderer = 'opengl'
+renderer = meshRenderer.meshRenderer()
+renderer.setRenderMode('geo')
+renderer.offscreenMode(True)
+
+renderer.setWindowSize(1024, 1024)
+renderer.setBackgroundTexture(img_original_bgr)
+renderer.setViewportSize(1024,1024)
+
+# self.renderer.add_mesh(meshList[0]['ver'],meshList[0]['f'])
+renderer.clear_mesh()
+
+generated_mesh_list_offset = generated_mesh_list[0]['vertices'].copy()
+generated_mesh_list_offset[:,0] -= 1024*0.5
+generated_mesh_list_offset[:,1] -= 1024*0.5
+render_mesh_list = []
+render_mesh_list.append( {'ver':generated_mesh_list_offset,
+                          'f':generated_mesh_list[0]['faces']})
+
+#for mesh in meshList:
+renderer.add_mesh(render_mesh_list[0]['ver'],
+                  render_mesh_list[0]['f'])
+renderer.showBackground(True)
+renderer.setWorldCenterBySceneCenter()
+renderer.setCameraViewMode("cam")
+# self.renderer.setViewportSize(img_original_resized.shape[1], img_original_resized.shape[0])
+
+renderer.display()
+renderImg = renderer.get_screen_color_ibgr()
+
+cv2.imwrite( os.path.join( out_dir, 'renderImg.jpg' ), renderImg )
+
+def generateSMPLImage(out_img_size,  ):
+    #renderer = 'opengl'
+    renderer = meshRenderer.meshRenderer()
+    renderer.setRenderMode('geo')
+    renderer.offscreenMode(True)
+
+    renderer.setWindowSize(out_img_size, out_img_size)
+    renderer.setBackgroundTexture(img_original_bgr)
+    renderer.setViewportSize(out_img_size,out_img_size)
+
+    # self.renderer.add_mesh(meshList[0]['ver'],meshList[0]['f'])
+    renderer.clear_mesh()
+
+    generated_mesh_list_offset = generated_mesh_list[0]['vertices'].copy()
+    generated_mesh_list_offset[:,0] -= out_img_size*0.5
+    generated_mesh_list_offset[:,1] -= out_img_size*0.5
+    render_mesh_list = []
+    render_mesh_list.append( {'ver':generated_mesh_list_offset,
+                            'f':generated_mesh_list[0]['faces']})
+
+    #for mesh in meshList:
+    renderer.add_mesh(render_mesh_list[0]['ver'],
+                    render_mesh_list[0]['f'])
+    renderer.showBackground(True)
+    renderer.setWorldCenterBySceneCenter()
+    renderer.setCameraViewMode("cam")
+    # self.renderer.setViewportSize(img_original_resized.shape[1], img_original_resized.shape[0])
+
+    renderer.display()
+    renderImg = renderer.get_screen_color_ibgr()
+
+    return renderImg
+
+
