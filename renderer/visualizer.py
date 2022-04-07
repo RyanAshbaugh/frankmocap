@@ -135,7 +135,8 @@ class Visualizer(object):
             self._visualize_gui_naive(pred_mesh_list_offset, img_original=res_img)
             overlaidImg = None
         else:
-            self._visualize_screenless_naive(pred_mesh_list_offset, img_original=res_img)
+            self._visualize_screenless_naive(pred_mesh_list_offset, img_original=res_img,
+                maxHeight=4000)
             overlaidImg = self.renderout['render_camview']
             # sideImg = self.renderout['render_sideview']
 
