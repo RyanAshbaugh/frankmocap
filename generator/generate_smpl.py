@@ -10,45 +10,121 @@ from renderer import meshRenderer
 
 device = torch.device('cuda') if torch.cuda.is_available() else torch.device('cpu')
 
-def generateSMPLImage(out_img_size, img_original_bgr, generated_mesh_list ):
-    #renderer = 'opengl'
-    renderer = meshRenderer.meshRenderer()
-    renderer.setRenderMode('geo')
-    renderer.offscreenMode(True)
+class smplSilhouetteCreation():
+    def __init__(self):
 
-    renderer.setWindowSize(out_img_size, out_img_size)
-    renderer.setBackgroundTexture(img_original_bgr)
-    renderer.setViewportSize(out_img_size,out_img_size)
+        self.visualizer = Visualizer("opengl")
+        self.smpl_dir = '/home/ryan/iprobe/frankmocap/extra_data/smpl'
+        self.smplModelPath = self.smpl_dir +  \
+            '/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl'
+        self.smpl_model = SMPL(self.smplModelPath,
+                               batch_size=1,
+                               create_transl=False).to(device)
+        self.out_dir = "/home/ryan/iprobe/frankmocap/temp_smpl_images/"
 
-    # self.renderer.add_mesh(meshList[0]['ver'],meshList[0]['f'])
-    renderer.clear_mesh()
+        self.out_img_height = 1024
+        self.out_img_width = 1024
+        self.bbox_height = 100
+        self.bbox_width = 100
 
-    generated_mesh_list_offset = generated_mesh_list[0]['vertices'].copy()
-    generated_mesh_list_offset[:,0] -= out_img_size*0.5
-    generated_mesh_list_offset[:,1] -= out_img_size*0.5
-    render_mesh_list = []
-    render_mesh_list.append( {'ver':generated_mesh_list_offset,
-                            'f':generated_mesh_list[0]['faces']})
+    def smplModelToImage(self, out_img_size,
+                         img_original_bgr,
+                         generated_mesh_list ):
+        #renderer = 'opengl'
+        renderer = meshRenderer.meshRenderer()
+        renderer.setRenderMode('geo')
+        renderer.offscreenMode(True)
 
-    #for mesh in meshList:
-    renderer.add_mesh(render_mesh_list[0]['ver'],
-                    render_mesh_list[0]['f'])
-    renderer.showBackground(True)
-    renderer.setWorldCenterBySceneCenter()
-    renderer.setCameraViewMode("cam")
-    # self.renderer.setViewportSize(img_original_resized.shape[1], img_original_resized.shape[0])
+        renderer.setWindowSize(out_img_size, out_img_size)
+        renderer.setBackgroundTexture(img_original_bgr)
+        renderer.setViewportSize(out_img_size,out_img_size)
 
-    renderer.display()
-    renderImg = renderer.get_screen_color_ibgr()
+        # self.renderer.add_mesh(meshList[0]['ver'],meshList[0]['f'])
+        renderer.clear_mesh()
 
-    return renderImg
+        generated_mesh_list_offset = generated_mesh_list[0]['vertices'].copy()
+        generated_mesh_list_offset[:,0] -= out_img_size*0.5
+        generated_mesh_list_offset[:,1] -= out_img_size*0.5
+        render_mesh_list = []
+        render_mesh_list.append( {'ver':generated_mesh_list_offset,
+                                'f':generated_mesh_list[0]['faces']})
 
+        #for mesh in meshList:
+        renderer.add_mesh(render_mesh_list[0]['ver'],
+                        render_mesh_list[0]['f'])
+        renderer.showBackground(True)
+        renderer.setWorldCenterBySceneCenter()
+        renderer.setCameraViewMode("cam")
+        # self.renderer.setViewportSize(img_original_resized.shape[1], img_original_resized.shape[0])
+
+        renderer.display()
+        renderImg = renderer.get_screen_color_ibgr()
+
+        return renderImg
+
+    def smplParamsToModel(self, betas, body_pose, global_orient,
+                          camera_params, background_img=None):
+
+        smpl_output = self.smpl_model(
+            betas=betas,
+            body_pose=body_pose,
+            global_orient=global_orient,
+            pose2rot=True)
+
+        generated_vertices = smpl_output.vertices
+        generated_joints_3d = smpl_output.joints
+        generated_vertices = generated_vertices[0].cpu().numpy()
+
+        generated_camera = camera_params.cpu().numpy().ravel()
+        camScale = generated_camera[0]
+        camTrans = generated_camera[1:]
+
+        #visualizer = Visualizer("opengl")
+        self.visualizer
+
+        # generated_mesh_list = demo_utils.extract_mesh_from_output(pred_output_list)
+        # center the bounding box
+        top = (self.out_img_height-self.bbox_height)/2
+        left = (self.out_img_width-self.bbox_width)/2
+
+        gen_vertices = smpl_output.vertices
+        gen_vertices = gen_vertices[0].cpu().numpy()
+        gen_vertices_bbox = convert_smpl_to_bbox(gen_vertices,generated_camera[0],
+                                                generated_camera[1:])
+        vertices = convert_bbox_to_oriIm(gen_vertices_bbox,
+                                         0.8,
+                                         (top,left,),
+                                         self.out_img_width,
+                                         self.out_img_height)
+        generated_mesh_list = [dict(vertices=vertices,
+                                    faces=self.smpl_model.faces)]
+
+        if type(background_img) != np.ndarray:
+            background_img = np.zeros(
+                (self.out_img_width,self.out_img_height,3), np.uint8)
+
+        dummy_bbox = [top,left,self.bbox_height,self.bbox_width]
+        model_img = self.visualizer.visualize(
+            background_img,
+            pred_mesh_list=generated_mesh_list,
+            body_bbox_list=[dummy_bbox]
+        )
+        return generated_mesh_list, model_img
+
+    def smplImageToSilhouette(self, smpl_img ):
+        ret,silh_img = cv2.threshold(smpl_img, 1,255, cv2.THRESH_BINARY)
+        return silh_img
+
+
+'''
 smpl_dir = '/home/ryan/iprobe/frankmocap/extra_data/smpl'
 smplModelPath = smpl_dir +  '/basicModel_neutral_lbs_10_207_0_v1.0.0.pkl'
 smpl_model = SMPL(smplModelPath, batch_size=1, create_transl=False).to(device)
 
 out_img_height = 1024
 out_img_width = 1024
+'''
+
 
 # load pre-trained neural network
 #SMPL_MEAN_PARAMS = './extra_data/body_module/data_from_spin/smpl_mean_params.npz'
@@ -78,6 +154,9 @@ generated_global_orient=torch.tensor([[ 2.9150,  0.1813, -0.9472]], device='cuda
 #generated_camera = torch.rand((1,3)).cuda()
 generated_camera = torch.tensor([[1.0, 0.0, 0.0]], device='cuda:0')
 
+silhouette_creator = smplSilhouetteCreation()
+
+'''
 smpl_output = smpl_model(
     betas=generated_betas,
     body_pose=generated_body_pose,
@@ -119,11 +198,9 @@ res_img = visualizer.visualize(
     body_bbox_list=[dummy_bbox]
 )
 
-out_dir = "/home/ryan/iprobe/frankmocap/temp_smpl_images/"
 
 cv2.imwrite( os.path.join( out_dir, 'test_image.jpg' ), res_img )
 
-'''
 #renderer = 'opengl'
 renderer = meshRenderer.meshRenderer()
 renderer.setRenderMode('geo')
@@ -154,9 +231,21 @@ renderer.setCameraViewMode("cam")
 renderer.display()
 renderImg = renderer.get_screen_color_ibgr()
 '''
-renderImg = generateSMPLImage( out_img_height, img_original_bgr,
-                              generated_mesh_list)
+out_img_height = 1024
+img_original_bgr = np.zeros((out_img_height,out_img_height,3),np.uint8)
 
-cv2.imwrite( os.path.join( out_dir, 'renderImg.png' ), renderImg )
+generated_mesh_list,_ = silhouette_creator.smplParamsToModel(generated_betas,
+                                     generated_body_pose,
+                                     generated_global_orient,
+                                     generated_camera,
+                                     img_original_bgr)
 
+renderImg = silhouette_creator.smplModelToImage( out_img_height,
+                                                img_original_bgr,
+                                                generated_mesh_list)
 
+cv2.imwrite( os.path.join( silhouette_creator.out_dir, 'renderImg.png' ),
+            renderImg )
+silh_img = silhouette_creator.smplImageToSilhouette(renderImg)
+cv2.imwrite( os.path.join( silhouette_creator.out_dir, 'silh_img.png' ),
+            silh_img )

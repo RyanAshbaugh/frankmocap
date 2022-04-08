@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+from generate_smpl import smplSilhouetteCreation
 
 
 class Discriminator(nn.Module):
@@ -43,9 +44,14 @@ class Generator(nn.Module):
             self._block(features_g*16, features_g*8, 4, 2, 1),    # 8 x 8
             self._block(features_g*8, features_g*4, 4, 2, 1),    # 16 x 16
             self._block(features_g*4, features_g*2, 4, 2, 1),   # 32x32
+            # 82 output channels for SMPL, 72 body, 10 shape betas
             nn.ConvTranspose2d(
-                features_g*2, 100, kernel_size=4, stride=2, padding=1,
+                features_g*2, 82, kernel_size=4, stride=2, padding=1,
             ),
+
+            # need to change from Tanh, I think something Gaussian? not sure
+            # exactly what the range is. Maybe 2*pi radians for joints? Unsure
+            # about betas
             nn.Tanh(),  # [-1, 1]
         )
 

@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -7,6 +8,7 @@ import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 from model import Discriminator, Generator, initialize_weights
+from generate_smpl import smplSilhouetteCreation
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 LEARNING_RATE = 5e-5
@@ -17,6 +19,8 @@ NOISE_DIM = 100
 NUM_EPOCHS = 10
 FEATURES_DISC = 64
 FEATURES_GEN = 64
+
+silhouette_creator = smplSilhouetteCreation()
 
 transforms = transforms.Compose(
     [
@@ -29,9 +33,9 @@ transforms = transforms.Compose(
     ]
 )
 
-dataset = datasets.MNIST(root="dataset/", train=True, transform=transforms,
-                         download=True)
-loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
+#dataset = datasets.MNIST(root="dataset/", train=True, transform=transforms,
+#                         download=True)
+#loader = DataLoader(dataset, batch_size=BATCH_SIZE, shuffle=True)
 gen = Generator(NOISE_DIM, CHANNELS_IMG, FEATURES_GEN).to(device)
 disc = Discriminator(CHANNELS_IMG, FEATURES_DISC).to(device)
 initialize_weights(gen)
@@ -45,6 +49,9 @@ fixed_noise = torch.randn(32, NOISE_DIM, 1, 1).to(device)
 writer_real = SummaryWriter("logs/real")
 writer_fake = SummaryWriter("logs/fake")
 
+output_img_size = 1024
+background_img = np.zeros((output_img_size,output_img_size,3),np.uint8)
+
 step = 0
 
 gen.train()
@@ -54,19 +61,32 @@ for epoch in range(NUM_EPOCHS):
     for batch_idx, (real, _) in enumerate(loader):
         real = real.to(device)
         noise = torch.randn((BATCH_SIZE, NOISE_DIM, 1, 1)).to(device)
-        # fake = gen(noise)
-        fake = real
+
+        # make generated smpl, keep rendering, image creation etc out of model,
+        # just SMPL parameters come out of model
+        fake_smpl_params = gen(noise)
+        black_background = np.zeros((output_img_size,output_img_size,3),
+                                    np.uint8)
+        betas = fake_smpl_params[:10]
+        body_pose = fake_smpl_params[10:-3]
+        global_orient = fake_smpl_params[-3:]
+        camera_params = torch.tensor([[1.0,0.0,0.0]],device='cuda:0')
+        fake_smpl = silhouette_creator.smplParamsToModel(betas,body_pose,
+                                                         global_orient,
+                                                         camera_params)
+        fake_image = silhouette_creator.smplModelToImage(output_img_size,
+                                                         )
 
         disc_real = disc(real).reshape(-1)
         loss_disc_real = criterion(disc_real, torch.ones_like(disc_real))
-        disc_fake = disc(fake.detach()).reshape(-1)
+        disc_fake = disc(fake_smpl_params.detach()).reshape(-1)
         loss_disc_fake = criterion(disc_fake, torch.zeros_like(disc_fake))
         loss_disc = (loss_disc_real + loss_disc_fake)/2
         disc.zero_grad()
         loss_disc.backward()
         opt_disc.step()
 
-        output = disc(fake).reshape(-1)
+        output = disc(fake_smpl_params).reshape(-1)
         loss_gen = criterion(output, torch.ones_like(output))
         gen.zero_grad()
         loss_gen.backward()
